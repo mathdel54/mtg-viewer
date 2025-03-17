@@ -25,61 +25,109 @@ class ImportCardCommand extends Command
 {
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
-        private readonly LoggerInterface        $logger,
-        private array                           $csvHeader = []
-    )
-    {
+        private readonly LoggerInterface $logger,
+        private array $csvHeader = []
+    ) {
         parent::__construct();
+    }
+
+    protected function configure(): void
+    {
+        $this
+            ->addOption(
+                'limit',
+                'l',
+                InputOption::VALUE_OPTIONAL,
+                'Limite le nombre de cartes à importer',
+                null
+            );
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        ini_set('memory_limit', '2G');
-        // On récupère le temps actuel
-        $io = new SymfonyStyle($input, $output);
-        $filepath = __DIR__ . '/../../data/cards.csv';
-        $handle = fopen($filepath, 'r');
+        try {
+            $this->entityManager->getConfiguration()->setMiddlewares([]);
+            ini_set('memory_limit', '2G');
 
-        // On récupère le temps actuel
-        $start = microtime(true);
+            $io = new SymfonyStyle($input, $output);
+            $limit = $input->getOption('limit');
+            $batchSize = 1000;
+            $filepath = __DIR__ . '/../../data/cards.csv';
+            $start = microtime(true);
 
-        $this->logger->info('Importing cards from ' . $filepath);
-        if ($handle === false) {
-            $io->error('File not found');
-            return Command::FAILURE;
-        }
-
-        $i = 0;
-        $this->csvHeader = fgetcsv($handle);
-        $uuidInDatabase = $this->entityManager->getRepository(Card::class)->getAllUuids();
-
-        $progressIndicator = new ProgressIndicator($output);
-        $progressIndicator->start('Importing cards...');
-
-        while (($row = $this->readCSV($handle)) !== false) {
-            $i++;
-
-            if (!in_array($row['uuid'], $uuidInDatabase)) {
-                $this->addCard($row);
+            if (!file_exists($filepath)) {
+                $io->error('File not found: ' . $filepath);
+                return Command::FAILURE;
             }
 
-            if ($i % 2000 === 0) {
+            $handle = fopen($filepath, 'r');
+            $this->logger->info('Starting import from {filepath}', [
+                'filepath' => $filepath,
+                'limit' => $limit,
+                'batchSize' => $batchSize
+            ]);
+
+            $this->csvHeader = fgetcsv($handle);
+            $uuidInDatabase = array_flip($this->entityManager->getRepository(Card::class)->getAllUuids());
+
+            $progressIndicator = new ProgressIndicator($output);
+            $progressIndicator->start('Importing cards...');
+
+            $this->entityManager->getConnection()->beginTransaction();
+
+            try {
+                $i = 0;
+                $importCount = 0;
+
+                while (($row = $this->readCSV($handle)) !== false) {
+                    $i++;
+
+                    if (!isset($uuidInDatabase[$row['uuid']])) {
+                        $this->addCard($row);
+                        $importCount++;
+
+                        if ($importCount % $batchSize === 0) {
+                            $this->entityManager->flush();
+                            $this->entityManager->clear();
+                            gc_collect_cycles();
+                            $progressIndicator->advance();
+                        }
+                    }
+
+                    if ($limit !== null && $i >= (int) $limit) {
+                        break;
+                    }
+                }
+
                 $this->entityManager->flush();
-                $this->entityManager->clear();
-                $progressIndicator->advance();
+                $this->entityManager->getConnection()->commit();
+
+                fclose($handle);
+                $progressIndicator->finish('Import completed successfully.');
+
+                $end = microtime(true);
+                $timeElapsed = $end - $start;
+
+                $io->success(sprintf('Imported %d cards (processed %d) in %.2f seconds.', $importCount, $i, $timeElapsed));
+                $this->logger->info('Imported {imported} cards in {timeElapsed} seconds.', [
+                    'processed' => $i,
+                    'imported' => $importCount,
+                    'timeElapsed' => round($timeElapsed,2),
+                ]);
+
+                return Command::SUCCESS;
+
+            } catch (\Exception $e) {
+                $this->entityManager->getConnection()->rollBack();
+                $this->logger->error('Import failed: ' . $e->getMessage());
+                $io->error($e->getMessage());
+
+                return Command::FAILURE;
             }
+        } finally {
+            $this->entityManager->clear();
+            gc_collect_cycles();
         }
-        // Toujours flush en sorti de boucle
-        $this->entityManager->flush();
-        $progressIndicator->finish('Importing cards done.');
-
-        fclose($handle);
-
-        // On récupère le temps actuel, et on calcule la différence avec le temps de départ
-        $end = microtime(true);
-        $timeElapsed = $end - $start;
-        $io->success(sprintf('Imported %d cards in %.2f seconds', $i, $timeElapsed));
-        return Command::SUCCESS;
     }
 
     private function readCSV(mixed $handle): array|false
