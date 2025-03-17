@@ -20,3 +20,10 @@ export async function fetchCardsByName(name) {
     const result = await response.json();
     return result;
 }
+
+export async function fetchAllSetCodes() {
+    const response = await fetch('/api/card/setcodes');
+    if (!response.ok) throw new Error('Failed to fetch cards');
+    const result = await response.json();
+    return result;
+}
