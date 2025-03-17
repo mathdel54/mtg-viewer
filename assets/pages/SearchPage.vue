@@ -4,11 +4,11 @@ import { fetchCardsByName, fetchAllSetCodes } from '../services/cardService';
 
 const search = ref('');
 const loadingCards = ref(false);
-const setcodes = ref([]);
 const cards = ref([]);
+const hasSearched = ref(false);
+const setcodes = ref([]);
 const filteredCards = ref([]);
 const choosedSetCode = ref('');
-const hasSearched = ref(false);
 
 function filterCardsBySet() {
     filteredCards.value = choosedSetCode.value ? cards.value.filter((card) => card.setCode === choosedSetCode.value) : filteredCards.value = [...cards.value];
