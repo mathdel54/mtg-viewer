@@ -1,5 +1,5 @@
-export async function fetchAllCards() {
-    const response = await fetch('/api/card/all');
+export async function fetchAllCards(id) {
+    const response = await fetch(`/api/card/all?page=${id}`);
     if (!response.ok) throw new Error('Failed to fetch cards');
     const result = await response.json();
     return result;
@@ -12,4 +12,11 @@ export async function fetchCard(uuid) {
     const card = await response.json();
     card.text = card.text.replaceAll('\\n', '\n');
     return card;
+}
+
+export async function fetchCardsByName(name) {
+    const response = await fetch(`/api/card/name/${name}`);
+    if (!response.ok) throw new Error('Failed to fetch cards');
+    const result = await response.json();
+    return result;
 }

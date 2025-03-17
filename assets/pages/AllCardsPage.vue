@@ -4,11 +4,22 @@ import { fetchAllCards } from '../services/cardService';
 
 const cards = ref([]);
 const loadingCards = ref(true);
+const page = ref(1);
 
-async function loadCards() {
+async function loadCards(id = 1) {
     loadingCards.value = true;
-    cards.value = await fetchAllCards();
+    cards.value = await fetchAllCards(id);
     loadingCards.value = false;
+}
+
+function nextPage() {
+    page.value += 1;
+    loadCards(page.value);
+}
+
+function previousPage() {
+    page.value -= 1;
+    loadCards(page.value);
 }
 
 onMounted(() => {
@@ -26,9 +37,11 @@ onMounted(() => {
         <div v-else>
             <div class="card-result" v-for="card in cards" :key="card.id">
                 <router-link :to="{ name: 'get-card', params: { uuid: card.uuid } }">
-                    {{ card.name }} <span>({{ card.uuid }})</span>
+                    {{ card.id }} - {{ card.name }} <span>({{ card.uuid }})</span>
                 </router-link>
             </div>
         </div>
+        <button type="button" @click="previousPage()">Page précédente</button>
+        <button type="button" @click="nextPage()">Page suivante</button>
     </div>
 </template>
