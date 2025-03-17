@@ -12,7 +12,6 @@ async function loadCardsByName() {
     const fetchedCards = await fetchCardsByName(search.value);
     cards.value = fetchedCards.slice(0, 20);
     hasSearched.value = true;
-    cards.value = [];
     loadingCards.value = false;
 }
 
